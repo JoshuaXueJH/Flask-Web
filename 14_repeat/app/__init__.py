@@ -1,3 +1,5 @@
+# -*- encoding: utf-8 -*-
+
 from flask import Flask
 from flask_bootstrap import Bootstrap
 from flask_moment import Moment
@@ -12,9 +14,11 @@ mail = Mail()
 moment = Moment()
 db = SQLAlchemy()
 pagedown = PageDown()
-
 login_manager = LoginManager()
+# 属性可以设置为None，'basic'，'strong'，以提供不同的安全等级防止用户会话被篡改。
+# 设为strong时，Flask-Login会记录客户端的IP地址和浏览器的用户代理信息，如果发现异常就登出用户
 login_manager.session_protection = 'strong'
+# 属性设置登录页面的端点，auth为其蓝本
 login_manager.login_view = 'auth.login'
 
 

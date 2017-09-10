@@ -1,6 +1,9 @@
-from . import db
+# -*- encoding: utf-8 -*-
+
+from . import db, login_manager
 from datetime import datetime
 from werkzeug.security import generate_password_hash, check_password_hash
+from flask_login import UserMixin, AnonymousUserMixin
 
 
 class Permission:
@@ -49,7 +52,7 @@ class Follow(db.Model):
     timestamp = db.Column(db.DateTime(), default=datetime.utcnow)
 
 
-class User(db.Model):
+class User(UserMixin, db.Model):
     __tablename__ = 'users'
     id = db.Column(db.Integer, primary_key=True)
     email = db.Column(db.String(64), unique=True, index=True)
@@ -72,8 +75,6 @@ class User(db.Model):
                                 backref=db.backref('followed', lazy='joined'),
                                 lazy='dynamic', cascade='all, delete-orphan')
 
-
-
     @property
     def password(self):
         raise AttributeError('password is not a readable attribute')
@@ -87,6 +88,24 @@ class User(db.Model):
 
     def __repr__(self):
         return '<User %r>' % self.username
+
+
+class AnonymousUser(AnonymousUserMixin):
+    def can(self, permissions):
+        return False
+
+    def is_administrator(self):
+        return False
+
+
+login_manager.anonymous_user = AnonymousUser
+
+
+# Flask-Login要求程序实现一个回调函数，使用指定的标识符加载用户。此函数接收以Unicode字符串形式表示的用户标识符。
+# 如果找到用户，这个函数必须返回用户对象，否则应该返回None
+@login_manager.user_loader
+def load_user(user_id):
+    return User.query.get(int(user_id))
 
 
 class Post(db.Model):
