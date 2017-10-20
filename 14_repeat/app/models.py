@@ -120,6 +120,7 @@ class User(UserMixin, db.Model):
                 self.role = Role.query.filter_by(default=True).first()
         if self.email is not None and self.avatar_hash is None:
             self.avatar_hash = hashlib.md5(self.email.encode('utf-8')).hexdigest()
+        self.followed.append(Follow(followed=self))
 
     def can(self, permissions):
         return self.role is not None and (self.role.permissions & permissions) == permissions
@@ -143,6 +144,42 @@ class User(UserMixin, db.Model):
         db.session.add(self)
         return True
 
+    def generate_email_change_token(self, new_email, expiration=3600):
+        s = TimedJSONWebSignatureSerializer(current_app.config['SECRET_KEY'])
+        return s.dumps({'change_email': self.id, 'new_email': new_email})
+
+    def change_email(self, token):
+        s = TimedJSONWebSignatureSerializer(current_app.config['SECRET_KEY'])
+        try:
+            data = s.loads(token)
+        except:
+            return False
+        if data.get('change_email') != self.id:
+            return False
+        new_email = data.get('new_email')
+        if self.query.filter_by(email=new_email).first() is not None:
+            return False
+        self.email = new_email
+        self.avatar_hash = hashlib.md5(self.email.encode('utf-8')).hexdigest()
+        db.session.add(self)
+        return True
+
+    def generate_reset_token(self, expiration=3600):
+        s = TimedJSONWebSignatureSerializer(current_app.config['SECRET_KEY'], expiration)
+        return s.dumps({'reset': self.id})
+
+    def reset_password(self, token, new_password):
+        s = TimedJSONWebSignatureSerializer(current_app.config['SECRET_KEY'])
+        try:
+            data = s.loads(token)
+        except:
+            return False
+        if data.get('reset') != self.id:
+            return False
+        self.password = new_password
+        db.session.add(self)
+        return True
+
     def ping(self):
         self.last_seen = datetime.utcnow()
         db.session.add(self)
@@ -155,6 +192,26 @@ class User(UserMixin, db.Model):
         hash = self.avatar_hash or hashlib.md5(self.email.encode('utf-8')).hexdigest()
         return '{url}/{hash}?s={size}&d={default}&r={rating}'.format(url=url, hash=hash, size=size, default=default,
                                                                      rating=rating)
+
+    def is_following(self, user):
+        return self.followed.filter_by(followed_id=user.id).first() is not None
+
+    def is_followed_by(self, user):
+        return self.followers.filter_by(follower_id=user.id).first() is not None
+
+    def follow(self, user):
+        if not self.is_following(user):
+            f = Follow(followed=user)
+            self.followed.append(f)
+
+    def unfollow(self, user):
+        f = self.followed.filter_by(followed_id=user.id).first()
+        if f:
+            self.followed.remove(f)
+
+    @property
+    def followed_posts(self):
+        return Post.query.join(Follow, Follow.followed_id == Post.author_id).filter(Follow.follower_id == self.id)
 
     def __repr__(self):
         return '<User %r>' % self.username
